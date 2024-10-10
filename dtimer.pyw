@@ -1,6 +1,7 @@
 #Optional Shebang for Linux (Might confuse Windows)
 #!/usr/bin/env python3
 
+import os
 ### CONFIG ###
 
 #Pomodero timer
@@ -13,7 +14,12 @@ MIN_RED=10
 
 LOG_TIME=True # Write time information to LOG file
 ALSO_LOG_PAUSE=True # Also log while not recording billable time
+
 DAT_EXTENTIONS=True # DataAnnotation Tech Specific Features
+if os.name == 'nt':
+    DAT_BROWSER="Microsoft​ Edge"
+else:
+    DAT_BROWSER="Mozilla Firefox"
 
 GUI_TITLE="DTimer : FOREGROUND"
 
@@ -31,11 +37,12 @@ Specifically for Data Annotation Tech.
 
 Created by: John McCabe-Dansted (and code snippets from StackOverflow)
 License: CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/
-dleVersion: 0.7.2
+dleVersion: 0.9
 
 If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
+New in 0.9: Better Linux support, autoclick DAT logo to get doomtime
 New in 0.8: Support Wayland? Switch to DataAnnotation Window.
 New in 0.7: Move old GUI to 0,0 if started again
 New in 0.6: DAT_EXTENSIONS (Enter Work Time) and LOG_TIME
@@ -81,7 +88,7 @@ RECORD_SYMBOL="\u23FA" # Unicode for record symbol
 ### BEGIN IMPORTS AND COMPATIBILITY CODE ###
 
 #    print(x.title)
-import os, sys, re, shutil
+import os, sys, re, shutil, glob
 from datetime import datetime
 
 import subprocess, os, platform
@@ -107,11 +114,6 @@ if LOG_TIME:
     log_fname=os.path.join('log', f'dtimer_{timestamp}.tsv')
     log_file=open(log_fname, "a", encoding="utf-8")
 
-
-def restart():
-    close_log()
-    os.execv(sys.executable, [sys.executable] + sys.argv)
-
 def replace_last_occurrence(s, old, new):
     # Find the last occurrence of the substring
     pos = s.rfind(old)
@@ -119,6 +121,21 @@ def replace_last_occurrence(s, old, new):
         return (-1,s)  # Substring not found, return the original string
     # Replace the last occurrence
     return (pos, s[:pos] + new + s[pos + len(old):])
+
+def venv_restart():
+    vpython=os.path.expanduser('~/.virtualenvs/dtimer.venv/bin/python3')
+    print( "vpython: " , vpython)
+    if os.path.exists(vpython):
+        print ("Exists!")
+        if sys.executable != vpython:
+          os.execv(vpython, [vpython] + sys.argv)
+
+venv_restart()
+
+def restart():
+    close_log()
+    venv_restart()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 #Define an 'xterm -e' like command.
 #WARNING: It doesn't escape double quotes (")
@@ -188,11 +205,11 @@ try:
     from time import sleep
 
 except ImportError as e:
-    pips='datetime tktimepicker pyautogui collection'
+    pips='datetime tktimepicker pyautogui collection pyautogui'
     if os.name=='nt':
         pips='tkinter pygetwindow ' + pips
     else:
-        pips='idle-time ' + pips
+        pips='idle-time pywinctl ' + pips
     #else:
     #    pips='contextlib ' + pips
     #pip has a stupid default many packages need an alternative timeout. None of the packages we will install, but lets be safe.
@@ -214,7 +231,7 @@ except ImportError as e:
         else:
             if os.name!='nt' and shutil.which('apt'):
                 #PIP insists on building PIL from source, so we need libjpeg-dev. I guess we don't need python3-pil?
-                pip_cmd="sudo add-apt-repository universe ; sudo apt-get update && sudo apt-get install python3-pip python3-pil libjpeg-dev && sudo apt-get install python3-venv"
+                pip_cmd="sudo add-apt-repository universe ; sudo apt update && ( sudo apt install python3-pip python3-pil libjpeg-dev ; sudo apt install python3-venv)"
                 msg+="\nPress Enter to install pip now, or close the window to quit."
                 xterm(pip_cmd, msg)
                 continue
@@ -223,6 +240,9 @@ except ImportError as e:
             xterm("echo bye", msg)
             quit()
         break
+
+    if not shutil.which('ensurepip'):
+        os.system("sudo apt install python3-venv")
 
     if os.name != 'nt':
         if os.system("python3 -m venv ~/.virtualenvs/dtimer.venv")==0:
@@ -558,18 +578,18 @@ class TimeTrackerApp(tk.Toplevel):
         self.doom_time = 0
         self.elapsed_time = 0
 
-        #scale_factor=2
+        #SCALE_FACTOR=float(root.tk.call('tk', 'scaling'))/1.1
+
+        ft = font.Font(family='Arial', size=16)
+        self.time_label = tk.Label(master, text="00:00:00", font=ft)
+        self.time_label.place(x=0,y=0)
 
         ft = font.Font(family='Arial', size=16)
         self.button = tk.Button(master, text=RECORD_SYMBOL, font=ft, command=self.toggle_recording)
         self.button.place(x=88*SCALE_FACTOR,y=0)
 
-        ft = font.Font(family='Arial', size=16)
-        self.time_label = tk.Label(master, text="00:00:00", font=ft)
-        self.time_label.place(x=0*SCALE_FACTOR,y=0)
         #self.master.geometry(f"{138*scale_factor}x{42*scale_factor}")
 
-        tl_h=self.time_label.winfo_height()
         ft = font.Font(family='Arial', size=9)
         self.doom_label = tk.Label(master, text="00:00:00", font=ft)
         #self.doom_label.pack(padx=1,pady=0,side=tk.LEFT)
@@ -622,7 +642,25 @@ class TimeTrackerApp(tk.Toplevel):
         self.master.after(1, lambda: store_fg(bad=True))
         self.master.after(10, lambda: unfocus(self))
 
-        root.geometry('%dx%d+%d+%d' % (w, h, x, y))
+        root.update()
+
+        #TODO: Check if this code works in NT too.
+        if os.name != 'nt':
+            LINE_SPACING=0.7
+
+            tl_h=self.time_label.winfo_height()
+            tl_w=self.time_label.winfo_width()
+            self.time_label.place(x=0,y=tl_h*(LINE_SPACING-1)/2)
+            self.button.place(x=tl_w,y=0)
+            self.doom_label.place(x=0,y=tl_h*LINE_SPACING)
+            self.wall_clock.place(x=tl_w-self.wall_clock.winfo_width(),y=tl_h*LINE_SPACING)
+            w = tl_w + self.button.winfo_width()
+            #h = (tl_h + self.doom_label.winfo_height() * LINE_SPACING)
+            h = self.button.winfo_height()
+
+            # y = hs - h - 4 * SCALE_FACTOR # - 100
+            x=y=0
+            root.geometry('%dx%d+%d+%d' % (w, h, x, y))
 
 
     def do_quit(self):
@@ -718,7 +756,7 @@ class TimeTrackerApp(tk.Toplevel):
 
         title=getForegroundWindowTitle()
         if not title.startswith("DataAnnotation"):
-            for x in pyautogui.getAllWindows():  #TODO: Fix on Linux
+            for x in gw.getAllWindows(): 
                 if x.title.startswith("DataAnnotation"):
                     x.activate()
                     time.sleep(0.01)
@@ -728,7 +766,6 @@ class TimeTrackerApp(tk.Toplevel):
         if not title.startswith("DataAnnotation"):
             for win in gw.getAllWindows():
                 print(win.title)
-                #if win.title.endswith("Microsoft​ Edge"):
                 if win.title.endswith(DAT_BROWSER):
                     print(win.title)
                     win.activate()
@@ -740,8 +777,10 @@ class TimeTrackerApp(tk.Toplevel):
             #w=gw.getActiveWindow()
             r=(w.left,w.top,w.width,64)
             #for img in ['dat_logo.png', 'dat_logo_grey.png', 'dat3.png', 'dat5.png','dat7.png']*150:
-            for i in range(17):
-                img=f"img/img{i}.png"
+            browser=DAT_BROWSER.split()[-1]
+            for img in glob.glob(f"img/{browser}/img*.png"):
+            #for i in range(17):
+                #img=f"img/img{i}.png"
                 try:
                     x, y = pyautogui.locateCenterOnScreen(img,region=r)
                     print("point", x, y)
