@@ -751,7 +751,6 @@ class TimeTrackerApp(tk.Toplevel):
     def do_doom(self):
         self.menu_showing=False
         global log_file
-        r=re.compile(r".*\nExpires in:[\s\n]+(?:(\d+) days? )?(?:(\d+) hours?)? ?(?:(\d+) minutes)?\n[$]\d.*",re.MULTILINE|re.DOTALL)
         unfocus(self)
 
         title=getForegroundWindowTitle()
@@ -803,6 +802,7 @@ class TimeTrackerApp(tk.Toplevel):
 
 
         #print(s)
+        r=re.compile(r".*\nExpires in:[\s\n]+(?:(\d+) days? )?(?:(\d+) hours?)? ?(?:(\d+) minutes)?\n[$]\d.*",re.MULTILINE|re.DOTALL)
         mat=r.match(s)
         if mat:
             d,h,m=mat.groups()
