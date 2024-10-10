@@ -255,7 +255,6 @@ except ImportError as e:
 
     xterm(pip_cmd, msg)
 
-    #Support installing unifont via curl later
     from tkinter.messagebox import askokcancel, showinfo, WARNING
     import tkinter as tk
     root = tk.Tk()
