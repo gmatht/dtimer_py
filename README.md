@@ -1,12 +1,20 @@
 # dtimer\_py
-DTimer was designed to be used as a timer for work,
-Specifically for Data Annotation Tech.
+I wasn't happy with the existing time management software, 
+so I made [a Python script](https://github.com/gmatht/joshell/blob/816b51707416b444111e07b74489d552e12bcd78/py/dtimer.pyw) to record my time.
+It records window titles so you can audit how you spent your time and a deadline clock.
+You should be able to tweak it to fit your needs.
+I tweaked it for use with Data Annotation Tech; For example, it warns you if you are recording billable time but have not Enter(ed) Work Mode on DAT's website.
+If you aren't going to work with DAT, you probably want to set DAT_EXTENSIONS to false.
+<p align="center">
+ <img src="https://github.com/user-attachments/assets/e41fb731-dfb4-45ac-9ffe-82aa835dfd9f" alt="DTimer Screenshot" width="50%">
+</p>
 
 *Created by:* John McCabe-Dansted (and code snippets from StackOverflow)
 
 If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
+New in 0.9: Better Linux support, autoclick DAT logo to get doomtime
 New in 0.8: Support Wayland? Switch to DataAnnotation Window before copying DAT info.
 New in 0.7: Move old GUI to 0,0 if started again
 New in 0.6: DAT\_EXTENSIONS (Enter Work Time) and LOG\_TIME
