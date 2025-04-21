@@ -37,11 +37,12 @@ Specifically for Data Annotation Tech.
 
 Created by: John McCabe-Dansted (and code snippets from StackOverflow)
 License: CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/
-dleVersion: 0.9
+Version: 0.91
 
 If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
+New in 0.91: Drag and Drop Screenshot menu item added.
 New in 0.9: Better Linux support, autoclick DAT logo to get doomtime
 New in 0.8: Support Wayland? Switch to DataAnnotation Window.
 New in 0.7: Move old GUI to 0,0 if started again

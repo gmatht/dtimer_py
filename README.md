@@ -15,6 +15,7 @@ If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
 **Changelog:**
+ - 0.91: Drag and Drop Screenshot menu item added
  - 0.9: Better Linux support, autoclick DAT logo to get doomtime
  - 0.8: Support Wayland? Switch to DataAnnotation Window before copying DAT info.
  - 0.7: Move old GUI to 0,0 if started again
