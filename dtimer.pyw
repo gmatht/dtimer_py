@@ -676,6 +676,7 @@ class TimeTrackerApp(tk.Toplevel):
         if DAT_EXTENTIONS:
             m.add_command(label="Doom ^A^C", command=self.do_doom)
         m.add_command(label="Doom Picker", command=self.get_time)
+        m.add_command(label="Screenshot", command=self.launch_screenshot)
         if DAT_EXTENTIONS:
             m.add_separator()
             m.add_command(label="Submit", command=self.do_submit)
@@ -1011,6 +1012,18 @@ class TimeTrackerApp(tk.Toplevel):
             self.button.configure(bg=bg)
 
         self.last_time = ctime
+
+    def launch_screenshot(self):
+        self.menu_showing = False
+        #Start the screenshot app in a new process to avoid mixing Tkinter with TkinterDnD
+        subprocess.Popen([sys.executable, 'dnd_screenshot.py'])
+        #TODO: Merge the screenshot app with the main app
+        # May need to port main app (dtimer.pyw) to TkinterDnD
+        # May need to check that screenshot() does not leak memory or window handles
+        # then do:
+        #    from dnd_screenshot import screenshot
+        #    screenshot()
+        # and rename main() to screenshot() in dnd_screenshot.py
 
 root = tk.Tk()
 app = TimeTrackerApp(root)
