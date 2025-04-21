@@ -1,4 +1,4 @@
-import tkinter as tk
+mport tkinter as tk
 from tkinter import simpledialog, messagebox
 from PIL import Image, ImageGrab, ImageTk
 import os
@@ -264,7 +264,8 @@ def main():
     # Clean up temp file
     if app.temp_file and os.path.exists(app.temp_file.name):
         try:
-            os.unlink(app.temp_file.name)
+            #os.unlink(app.temp_file.name)
+            pass
         except:
             pass
 
