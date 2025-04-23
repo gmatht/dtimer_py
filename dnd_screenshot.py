@@ -1,4 +1,4 @@
-mport tkinter as tk
+import tkinter as tk
 from tkinter import simpledialog, messagebox
 from PIL import Image, ImageGrab, ImageTk
 import os
