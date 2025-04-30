@@ -207,7 +207,7 @@ try:
 except ImportError as e:
     pips='datetime tktimepicker pyautogui collection pyautogui'
     if os.name=='nt':
-        pips='tkinter pygetwindow ' + pips
+        pips='pygetwindow ' + pips
     else:
         pips='idle-time pywinctl ' + pips
     #else:
