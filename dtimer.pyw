@@ -37,11 +37,12 @@ Specifically for Data Annotation Tech.
 
 Created by: John McCabe-Dansted (and code snippets from StackOverflow)
 License: CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/
-dleVersion: 0.9
+Version: 0.91
 
 If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
+New in 0.91: Drag and Drop Screenshot menu item added.
 New in 0.9: Better Linux support, autoclick DAT logo to get doomtime
 New in 0.8: Support Wayland? Switch to DataAnnotation Window.
 New in 0.7: Move old GUI to 0,0 if started again
@@ -123,6 +124,10 @@ def replace_last_occurrence(s, old, new):
     return (pos, s[:pos] + new + s[pos + len(old):])
 
 def venv_restart():
+    #vpython=sys.executable
+    #os.execv(vpython, [vpython] + sys.argv)
+    #return
+
     vpython=os.path.expanduser('~/.virtualenvs/dtimer.venv/bin/python3')
     print( "vpython: " , vpython)
     if os.path.exists(vpython):
@@ -134,8 +139,10 @@ venv_restart()
 
 def restart():
     close_log()
-    venv_restart()
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    #venv_restart()
+    #os.execv(sys.executable, [sys.executable] + sys.argv)
+    os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
+    exit()
 
 #Define an 'xterm -e' like command.
 #WARNING: It doesn't escape double quotes (")
@@ -321,10 +328,19 @@ if os.name=='nt':
         handle = root.frame()
         user32.SetWindowPos(handle, -1, 0, 0, 110, 110, 0x003)
         #recover_old_process(0x003)
-
     def unfocus(tk):
+        """
+        Unfocuses the timer window and returns focus to the previously active window.
+        Also ensures the timer window stays topmost by calling topmost() function.
+        
+        Args:
+            tk: The tkinter instance
+        """
         global last_hwnd
-        last_hwnd.activate()
+        try:
+           last_hwnd.activate()
+        except:
+           pass
         #Windows tends to forget this is meant to be above Taskbar
         #Lets remind windows occasionally
         topmost()
@@ -551,6 +567,39 @@ class VerticalScrolledFrame(ttk.Frame):
         canvas.bind('<Configure>', _configure_canvas)
 
 ### My Code ###
+
+def parse_DAT(s,log_prefix=""):
+        e=0
+        if "DataAnnotation" not in s:
+            e=1
+        elif "Report Time" in s:
+            e=2
+        elif "Enter Work Mode" in s:
+            e=3
+
+        r=re.compile(r".*\nExpires in:[\s\n]+(?:(\d+) days? )?(?:(\d+) hours?)? ?(?:(\d+) minutes?)?\n[$]\d.*",re.MULTILINE|re.DOTALL)
+        mat=r.match(s)
+        d=None
+        h=None
+        m=None
+        if mat:
+            d,h,m=mat.groups()
+            if not d:
+                d=0
+            if not h:
+                h=0
+            if not m:
+                m=0
+        ls=f"log/{log_prefix}doom-{e}"
+        log=open(ls, "a", encoding="utf-8")
+
+        log.write(f"--- {e} {d} {h} {m} --- \n")
+        log.write(f"{s}\n")
+        log.close()
+        return (e,d,h,m)
+
+
+
 #def init_pos():
 def copy_all():
 #    if os.name!='nt':
@@ -614,8 +663,8 @@ class TimeTrackerApp(tk.Toplevel):
         hs = t.winfo_screenheight() # height of the screen
 
         # calculate x and y coordinates for the Tk root window
-        x = (ws-2)*7/10 # - 100
-        y = hs - h - 4 * SCALE_FACTOR # - 100
+        x = (ws-2)*8/10 # - 100
+        y = hs - h - 4 - 8  * SCALE_FACTOR # - 100
 
         # set the dimensions of this timer window
         # and where it is placed
@@ -628,6 +677,10 @@ class TimeTrackerApp(tk.Toplevel):
         if DAT_EXTENTIONS:
             m.add_command(label="Doom ^A^C", command=self.do_doom)
         m.add_command(label="Doom Picker", command=self.get_time)
+        m.add_command(label="Screenshot", command=self.launch_screenshot)
+        if DAT_EXTENTIONS:
+            m.add_separator()
+            m.add_command(label="Submit", command=self.do_submit)
         m.add_separator()
         m.add_command(label="Restart", command=restart)
         m.add_command(label="Quit", command=self.do_quit)
@@ -746,8 +799,15 @@ class TimeTrackerApp(tk.Toplevel):
             t+=self.category_values[i].get()*self.category_mins[i]
         self.fix_time_label.config(text=f"Minutes: {t:.2f}" + "  [{:02d}:{:02d}]".format(*divmod(int(t), 60)))
 
+    def do_submit(self):
+        dt=datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.do_doom(f"submit-{dt}")
+        with pyautogui.hold('ctrl'):
+            pyautogui.press('f')
+        pyautogui.typewrite('submit')
+        pyautogui.press('enter')
 
-    def do_doom(self):
+    def do_doom(self, log_prefix=""):
         self.menu_showing=False
         global log_file
         unfocus(self)
@@ -789,22 +849,19 @@ class TimeTrackerApp(tk.Toplevel):
                     time.sleep(.001)
             print(r)
         copy_all()
-        time.sleep(0.01)
+        time.sleep(0.1)
         s=self.master.clipboard_get()
 
-        if "DataAnnotation" not in s:
+        (e,d,h,m)=parse_DAT(s, log_prefix)
+
+        if e==1:
             tk.messagebox.showwarning("Could not find DataAnnotation", "You do not appear to have the DataAnnotation Window in the foreground.\nUnable to check Work Mode and Deadlines.")
-        elif "Report Time" in s:
+        elif e==2:
             tk.messagebox.showwarning("Enter Work Mode", "You appear to be on DAT's main screen. Please remember to press 'Enter Work Mode' after selecting a project.")
-        elif "Enter Work Mode" in s:
+        elif e==3:
             tk.messagebox.showwarning("Enter Work Mode", "You do not appear to be in work mode\nPlease Enter Work Mode Now.")
 
-
-        #print(s)
-        r=re.compile(r".*\nExpires in:[\s\n]+(?:(\d+) days? )?(?:(\d+) hours?)? ?(?:(\d+) minutes)?\n[$]\d.*",re.MULTILINE|re.DOTALL)
-        mat=r.match(s)
-        if mat:
-            d,h,m=mat.groups()
+        if not d is None or e==0:
             if not d:
                 d=0
             if not h:
@@ -814,7 +871,6 @@ class TimeTrackerApp(tk.Toplevel):
             self.doom_time=time.time()+(int(d)*24+int(h))*3600+int(m)*60
             if LOG_TIME:
                 log_file.write("D\t"+str(self.doom_time)+"\n")
-
 
         if LOG_TIME:
             r=re.compile(r".*Projects\r?\n([^\n\r]*)",re.MULTILINE|re.DOTALL)
@@ -829,7 +885,6 @@ class TimeTrackerApp(tk.Toplevel):
             mat=r.match(s)
             if mat:
                 log_file.write("I\t"+mat.group(1)+"\n")
-
 
     def do_copy(self):
         self.menu_showing=False
@@ -958,6 +1013,18 @@ class TimeTrackerApp(tk.Toplevel):
             self.button.configure(bg=bg)
 
         self.last_time = ctime
+
+    def launch_screenshot(self):
+        self.menu_showing = False
+        #Start the screenshot app in a new process to avoid mixing Tkinter with TkinterDnD
+        subprocess.Popen([sys.executable, 'dnd_screenshot.py'])
+        #TODO: Merge the screenshot app with the main app
+        # May need to port main app (dtimer.pyw) to TkinterDnD
+        # May need to check that screenshot() does not leak memory or window handles
+        # then do:
+        #    from dnd_screenshot import screenshot
+        #    screenshot()
+        # and rename main() to screenshot() in dnd_screenshot.py
 
 root = tk.Tk()
 app = TimeTrackerApp(root)
