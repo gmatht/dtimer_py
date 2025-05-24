@@ -1014,6 +1014,27 @@ class TimeTrackerApp(tk.Toplevel):
 
         self.last_time = ctime
 
+        # Get the current hour
+        current_hour = datetime.now().hour
+
+        # Check if the hour has changed
+        if current_hour != self.last_logged_hour:
+            self.log_top_window_times()  # Log the top window times
+            self.last_logged_hour = current_hour  # Update the last logged hour
+
+    def log_top_window_times(self):
+        # Sort the window titles by time spent and get the top 10
+        top_titles = sorted(self.title_times.items(), key=lambda item: item[1], reverse=True)[:10]
+        
+        # Log to a file
+        log_file_path = os.path.join('log', 'top_window_times.tsv')
+        with open(log_file_path, 'a', encoding='utf-8') as log_file:
+            log_file.write(f"Top Window Titles for the hour ending at {self.last_logged_hour}:00:\n")
+            for title, time_spent in top_titles:
+                minutes = time_spent / 60
+                log_file.write(f"{title}: {minutes:.2f} minutes\n")
+            log_file.write("\n")  # Add a newline for separation
+
     def launch_screenshot(self):
         self.menu_showing = False
         #Start the screenshot app in a new process to avoid mixing Tkinter with TkinterDnD
