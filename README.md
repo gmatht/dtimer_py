@@ -1,5 +1,5 @@
 # dtimer\_py
-I wasn't happy with the existing time management software, 
+I wasn't happy with the existing time management software,
 so I made [a Python script](https://github.com/gmatht/joshell/blob/816b51707416b444111e07b74489d552e12bcd78/py/dtimer.pyw) to record my time.
 It records window titles so you can audit how you spent your time and a deadline clock.
 You should be able to tweak it to fit your needs.
@@ -24,7 +24,7 @@ If you want to work for DAT you can use my referral code:
  - 0.4: Removed Linux dependancy on Unifont
  - 0.3: Tested and fixed install on Ubuntu
  - 0.2: Basic Linux Support and offers to download missing files
-  
+
 
 *TODO:* Support MacOS, Reduce size of logs, check that use of CC-BY-SA StackOverflow code is Fair Use or Compatible with LGPL.
 

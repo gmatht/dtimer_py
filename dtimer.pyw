@@ -332,7 +332,7 @@ if os.name=='nt':
         """
         Unfocuses the timer window and returns focus to the previously active window.
         Also ensures the timer window stays topmost by calling topmost() function.
-        
+
         Args:
             tk: The tkinter instance
         """
@@ -814,12 +814,12 @@ class TimeTrackerApp(tk.Toplevel):
 
         title=getForegroundWindowTitle()
         if not title.startswith("DataAnnotation"):
-            for x in gw.getAllWindows(): 
+            for x in gw.getAllWindows():
                 if x.title.startswith("DataAnnotation"):
                     x.activate()
                     time.sleep(0.01)
                     break
-   
+
         title=getForegroundWindowTitle()
         if not title.startswith("DataAnnotation"):
             for win in gw.getAllWindows():
@@ -1025,7 +1025,7 @@ class TimeTrackerApp(tk.Toplevel):
     def log_top_window_times(self):
         # Sort the window titles by time spent and get the top 10
         top_titles = sorted(self.title_times.items(), key=lambda item: item[1], reverse=True)[:10]
-        
+
         # Log to a file
         log_file_path = os.path.join('log', 'top_window_times.tsv')
         with open(log_file_path, 'a', encoding='utf-8') as log_file:
