@@ -16,6 +16,11 @@ MIN_RED=10
 LOG_TIME=True # Write time information to LOG file
 ALSO_LOG_PAUSE=True # Also log while not recording billable time
 
+# Video recording settings
+VIDEO_OUTPUT_DIR = "recordings"  # Directory to save video recordings
+VIDEO_FPS = 8 # Frames per second for video recording
+# Note: We can't record faster than a couple of frames per second
+
 DAT_EXTENTIONS=True # DataAnnotation Tech Specific Features
 if os.name == 'nt':
     DAT_BROWSER="Microsoft​ Edge"
@@ -38,11 +43,12 @@ Specifically for Data Annotation Tech.
 
 Created by: John McCabe-Dansted (and code snippets from StackOverflow)
 License: CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/
-Version: 0.91
+Version: 0.92
 
 If you want to work for DAT you can use my referral code:
 2ZbHGEA
 
+New in 0.92: Reset Time option and Record Video (No Audio) feature added.
 New in 0.91: Drag and Drop Screenshot menu item added.
 New in 0.9: Better Linux support, autoclick DAT logo to get doomtime
 New in 0.8: Support Wayland? Switch to DataAnnotation Window.
@@ -69,15 +75,20 @@ Features:
 - Pomodoro (Button turns red when work/play time is up)
 - Record Time each Windows spends in the Foreground
     * Recorded as IDLE if the user is away for 1+ minutes
+- Record Video (No Audio): Capture screen activity without sound
 
 ---------------------------------------------
 
 Right Click Menu:
 - Copy: Foreground Window Times
+- View Log: Open the time tracking log file
 - Fix Time: Adjust which window titles are billable
 - Doom ^A^C: Copy All Text, Initialize Doom Clock from Clipboard
 - Doom Picker: Manually set Deadline
+- Screenshot: Take a screenshot
+- Record Video: Start/stop screen recording (no audio)
 --------------------------------------------
+- Reset Time: Reset elapsed time counter to zero
 - Restart: Set Billable time etc. to Zero
 - Quit: Stop This program
 --------------------------------------------
@@ -90,7 +101,10 @@ RECORD_SYMBOL="\u23FA" # Unicode for record symbol
 ### BEGIN IMPORTS AND COMPATIBILITY CODE ###
 
 import os, sys, re, shutil, glob
+from tkinter import ttk
 from datetime import datetime
+from tkinter import ttk
+import queue
 
 import subprocess, os, platform
 
@@ -190,6 +204,7 @@ try:
     from collections import defaultdict
     from datetime import datetime
     from tkinter.constants import VERTICAL, LEFT, BOTH, RIGHT, NW, Y,FALSE, TRUE
+    from threading import Thread
 
     import pyautogui
     if os.name=='nt':
@@ -211,8 +226,13 @@ try:
 
     from time import sleep
 
+    # For video recording
+    import cv2
+    import numpy as np
+    import mss
+
 except ImportError as e:
-    pips='datetime tktimepicker pyautogui collection pyautogui'
+    pips='datetime tktimepicker pyautogui collection pyautogui opencv-python numpy mss'
     if os.name=='nt':
         pips='pygetwindow ' + pips
     else:
@@ -349,6 +369,27 @@ def copy_all():
 
 print (SCALE_FACTOR)
 
+def non_blocking_messagebox(title,desc,button_label,command):
+    message_window = tk.Toplevel()
+    message_window.title(title)
+    #message_window.geometry("300x100")
+
+    def onpress():
+        command()
+        #message_window.destroy
+
+    label = ttk.Label(message_window, text=desc)
+    label.pack(pady=10, padx=10)
+
+    close_button = ttk.Button(message_window, text=button_label, command=onpress)
+    close_button.pack(pady=10)
+
+    # Make sure the window doesn't block the main application
+    #message_window.transient()  # Keep it on top of the main window
+    message_window.attributes ('-topmost', True)
+
+    return message_window
+
 class TimeTrackerApp(tk.Toplevel):
     def __init__(self, master):
         self.master = master
@@ -358,13 +399,17 @@ class TimeTrackerApp(tk.Toplevel):
         if os.name != 'nt':
             self.master.wm_attributes("-type", "dock")
 
-        self.recording = False
+        self.recording = False # Recording work time (not video)
         self.last_time = time.time()
         self.toggle_time = self.last_time
         self.doom_time = 0
         self.elapsed_time = 0
+        self.last_logged_hour = None  # Track the last logged hour
 
-        self.last_logged_hour = None
+
+        # Create video output directory if it doesn't exist
+        if not os.path.exists(VIDEO_OUTPUT_DIR):
+            os.makedirs(VIDEO_OUTPUT_DIR)
 
         #SCALE_FACTOR=float(root.tk.call('tk', 'scaling'))/1.1
 
@@ -387,11 +432,24 @@ class TimeTrackerApp(tk.Toplevel):
 
         self.title_times = defaultdict(float)
         self.pause_times = defaultdict(float)
+        self.window_time_log = defaultdict(float)  # Track time for each window title
+        self.last_hour = time.time()  # Track the last time we logged the top titles
 
         self.master.bind("<ButtonPress-1>", self.start_move)
         self.master.bind("<ButtonRelease-1>", self.stop_move)
         self.master.bind("<B1-Motion>", self.do_move)
         self.master.bind("<Button-3>", self.do_popup)
+
+        # Video recording variables
+        self.video_thread = None
+        self.is_recording_video = False
+        self.video_writer = None
+        self.sct = None
+        self.video_start_time = None
+        self.video_filename = None
+        self.last_frame_time = None
+        self.video_messagebox = None
+        self.frame_num = 0
 
         t=root
         w = 133*SCALE_FACTOR #t.winfo_width() # width for the Tk root
@@ -418,10 +476,12 @@ class TimeTrackerApp(tk.Toplevel):
             m.add_command(label="Doom ^A^C", command=self.do_doom)
         m.add_command(label="Doom Picker", command=self.get_time)
         m.add_command(label="Screenshot", command=self.launch_screenshot)
+        m.add_command(label="Record Video", command=self.toggle_video_recording)
         if DAT_EXTENTIONS:
             m.add_separator()
             m.add_command(label="Submit", command=self.do_submit)
         m.add_separator()
+        m.add_command(label="Reset Time", command=self.reset_time)
         m.add_command(label="Restart", command=restart)
         m.add_command(label="Quit", command=self.do_quit)
         m.add_separator()
@@ -454,6 +514,164 @@ class TimeTrackerApp(tk.Toplevel):
             x=y=0
             root.geometry('%dx%d+%d+%d' % (w, h, x, y))
 
+
+    # New method to reset time
+    def reset_time(self):
+        #resets all timers to 0
+
+        self.menu_showing = False
+        # Reset timers and counters
+        self.elapsed_time = 0
+        self.title_times = defaultdict(float)
+        self.pause_times = defaultdict(float)
+        self.window_time_log = defaultdict(float)
+        self.last_time = time.time()
+        self.toggle_time = self.last_time
+        self.time_label.config(text="00:00:00")
+        # Optionally reset doom time if desired
+        # self.doom_time = 0
+
+        # Log the reset if logging is enabled
+        if LOG_TIME:
+            log_file.write("R\tRESET\tTime counters reset\n")
+            log_file.flush()
+
+        messagebox.showinfo("Time Reset", "Time counters have been reset.")
+
+    # New methods for video recording
+    def start_video_record(self):
+        #Starts capturing frames and queueing them to be encoded by another thread
+
+        if self.is_recording_video:
+            messagebox.showwarning("Already Recording", "Video recording is already in progress.")
+            return
+
+        self.popup_menu.entryconfig("Record Video", label="Stop Recording")
+
+
+        # Initialize screen capture
+        self.sct = mss.mss()
+
+        #Do not store more than a second of frames, it could easily flood memory
+        self.video_queue = queue.Queue(VIDEO_FPS)
+
+        def writer_fn():
+            #write frames to avi file
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = f'video_{timestamp}.mp4'
+            self.video_filename = os.path.join(VIDEO_OUTPUT_DIR, fname)
+
+            # Get screen dimensions (capture primary monitor)
+            monitor = self.sct.monitors[1]  # 0 is all monitors, 1 is primary
+
+            # Set up video writer
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            #fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            #Keep all calls to video_writer on the same thread.
+            self.video_writer = cv2.VideoWriter(self.video_filename, fourcc, VIDEO_FPS * 1.0,
+                                              (monitor["width"], monitor["height"]))
+
+            while True:
+                #Python Queues implement required locking.
+                frame = self.video_queue.get()
+                if frame is None:
+                    return
+                frame = np.array(frame)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                self.video_writer.write(frame)
+
+            self.video_writer.release()
+
+        self.video_thread = Thread(target=writer_fn)
+        self.video_thread.start()
+
+        start_frame_time=time.time()
+        self.is_recording_video = True
+        self.video_start_time = time.time()
+        self.video_messagebox = non_blocking_messagebox("Video Recording",
+            f"Started recording video to:\n{self.video_filename}",
+            "Stop Recording",self.stop_video_record)
+        self.record_video_frame()
+
+    def stop_video_record(self):
+        #Cleanup and stop recording video
+
+        if not self.is_recording_video:
+            messagebox.showwarning("Not Recording", "No video recording is in progress.")
+            return
+
+        self.video_queue.put(None)
+        self.popup_menu.entryconfig("Stop Recording", label="Record Video")
+        self.video_messagebox.destroy()
+        self.video_messagebox = None
+
+        self.is_recording_video = False
+        self.frame_num = 0
+
+        # Release resources
+        if self.sct:
+            self.sct.close()
+
+        duration = time.time() - self.video_start_time
+        mins, secs = divmod(duration, 60)
+        hours, mins = divmod(mins, 60)
+
+        messagebox.showinfo("Video Recording Stopped",
+                          f"Video saved to: {self.video_filename}\n"
+                          f"Duration: {int(hours):02d}:{int(mins):02d}:{int(secs):02d}")
+
+        # Log the video recording if logging is enabled
+        if LOG_TIME:
+            log_file.write(f"V\tVIDEO\t{self.video_filename}\t{duration:.2f}\n")
+            log_file.flush()
+
+    def toggle_video_recording(self):
+        """Start or stop video recording"""
+
+        self.menu_showing = False
+
+        if self.is_recording_video:
+            self.stop_video_record()
+        else:
+            self.start_video_record()
+
+    def record_video_frame(self):
+        if not self.is_recording_video:
+            self.last_frame_time=None
+            return
+
+        start_frame_time=time.time()
+
+        deadline_s  = 1/VIDEO_FPS
+        deadline_ms = int(1000*deadline_s)
+
+
+        # Capture screen
+        frame = self.sct.grab(self.sct.monitors[1])
+        self.video_queue.put(frame)
+        finish_frame_time=time.time()
+
+        self.frame_num += 1
+        next_frame_time = self.video_start_time + ( deadline_s * self.frame_num )
+
+        ms_taken=(finish_frame_time-start_frame_time)*1000
+
+        #uncomment to help debug time issues
+        #if self.last_frame_time:
+        #   total_time_between_frames=finish_frame_time-self.last_frame_time
+        #   print(f"{ms_taken}ms Total:{total_time_between_frames}s Deadline:{deadline_s}s\n")
+
+        # Schedule next frame (approximately 20 FPS)
+        late = finish_frame_time - next_frame_time
+        self.master.after(max(0, round(1000 * -late)), self.record_video_frame)
+
+        if late > (deadline_s/4):
+            #frame is significantly late
+            num=self.frame_num
+            print(f"Frame {num} late {late}s, working:{ms_taken}ms. Deadline {deadline_s}\n")
+
+        self.last_frame_time=time.time()
 
     def do_quit(self):
         close_log()
@@ -550,7 +768,7 @@ class TimeTrackerApp(tk.Toplevel):
     def do_doom(self, log_prefix=""):
         self.menu_showing=False
         global log_file
-        gui_ctrl.unfocus(self)
+        gui_ctrl.unfocus(root)
 
         title=getForegroundWindowTitle()
         if not title.startswith("DataAnnotation"):
@@ -654,7 +872,7 @@ class TimeTrackerApp(tk.Toplevel):
     def stop_move(self, event):
         self.x = None
         self.y = None
-        gui_ctrl.unfocus(self)
+        gui_ctrl.unfocus(root)
 
     def do_move(self, event):
         deltax = event.x - self.x
@@ -675,7 +893,7 @@ class TimeTrackerApp(tk.Toplevel):
             self.button.config(text=PAUSE_SYMBOL)
         else:
             self.button.config(text=RECORD_SYMBOL)
-        gui_ctrl.unfocus(self)
+        gui_ctrl.unfocus(root)
 
     def time2str(self,secs):
         minutes, seconds = divmod(secs, 60)
